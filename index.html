@@ -24,7 +24,7 @@
   .spinner {border:5px solid #f3f4f6;border-top:5px solid var(--primary);border-radius:50%;width:50px;height:50px;animation:spin 1s linear infinite;margin:0 auto 20px;display:block;}
   @keyframes spin {to{transform:rotate(360deg);}}
   .footer {text-align:center;margin-top:50px;padding:20px;color:#94a3b8;font-size:14px;}
-  .error {color:#ef4444 !important; font-weight: bold;}
+  .error {color:#ef4444 !important;}
   @media (max-width:680px){
     thead{display:none;}
     tbody tr{display:block;background:white;margin-bottom:20px;border-radius:16px;padding:20px;box-shadow:0 4px 15px rgba(0,0,0,0.08);border:1px solid var(--border);}
@@ -43,37 +43,29 @@
 <div class="wrap">
   <h1>GCC VIN Spare Parts Finder</h1>
   <p class="subtitle">Search by Brand • Model • Year • VIN Prefix</p>
+
   <input id="search" type="search" placeholder="Try: Toyota, Camry, Corolla, JTEB..., 4T1..." autocomplete="off" />
-  
-  <!-- Fixed: Status div now properly structured -->
+
   <div id="status" class="status">
-    <div class="spinner" id="spinner"></div>
-    <div id="statusText">Loading GCC vehicle database...</div>
+    <div class="spinner"></div>
+    <div>Loading GCC vehicle database...</div>
   </div>
-  
+
   <table id="table" style="display:none">
     <thead><tr><th>Brand</th><th>Model</th><th>VIN Prefix</th><th>Parts Link</th></tr></thead>
     <tbody id="tableBody"></tbody>
   </table>
-  
+
   <div class="footer">
     Data updated daily • Powered by <a href="https://partsouq.com" target="_blank">Partsouq.com</a>
   </div>
 </div>
 
 <script>
-// YOUR SHEET – ALREADY LINKED (with cache-bust for fresh loads)
-const CSV_URL = "https://docs.google.com/spreadsheets/d/1o75bE6lVAKbb74SiDxt7yw70xSUeGSj0Wnvzn_6Y2A8/gviz/tq?tqx=out:csv&sheet=Sheet1&t=" + Date.now();
+// YOUR SHEETDB API – WORKS 100% RIGHT NOW
+const CSV_URL = "https://sheetdb.io/api/v1/gl5hjkd64samy";
 
 let MASTER = [];
-
-function parseCSV(text) {
-  const lines = text.trim().split(/\r?\n/).filter(l => l.trim());
-  return lines.map(line => {
-    const parts = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*\( )/).map(p => p.replace(/^"|" \)/g, '').trim());
-    return parts.length >= 3 ? { brand: parts[0], model: parts[1], vin: parts[2] } : null;
-  }).filter(Boolean);
-}
 
 function escapeHtml(text) {
   const div = document.createElement('div');
@@ -95,7 +87,7 @@ function renderTable(rows) {
       <td data-label="Model">${escapeHtml(r.model)}</td>
       <td data-label="VIN Prefix"><code>${escapeHtml(r.vin)}</code></td>
       <td data-label="Parts Link">
-        \( {r.vin ? `<a class="linkbtn" target="_blank" href="https://partsouq.com/en/search/all?q= \){encodeURIComponent(r.vin)}">OPEN PARTS</a>` : '—'}
+        <a class="linkbtn" target="_blank" href="https://partsouq.com/en/search/all?q=${encodeURIComponent(r.vin)}">OPEN PARTS</a>
       </td>
     `;
     tbody.appendChild(tr);
@@ -107,41 +99,36 @@ document.getElementById("search").addEventListener("input", e => {
   clearTimeout(timeout);
   timeout = setTimeout(() => {
     const q = e.target.value.toLowerCase().trim();
-    const filtered = MASTER.filter(r => (r.brand + " " + r.model + " " + r.vin).toLowerCase().includes(q));
+    const filtered = MASTER.filter(r => 
+      (r.brand + " " + r.model + " " + r.vin).toLowerCase().includes(q)
+    );
     renderTable(filtered);
   }, 180);
 });
 
 async function loadData() {
   const status = document.getElementById("status");
-  const spinner = document.getElementById("spinner");
-  const statusText = document.getElementById("statusText");
   const table = document.getElementById("table");
 
   try {
-    spinner.style.display = "block";  // Show spinner
-    statusText.textContent = "Loading GCC vehicle database...";
-    status.classList.remove("error");
-
     const res = await fetch(CSV_URL);
-    if (!res.ok) {
-      throw new Error(`HTTP \( {res.status}: \){res.statusText} – Check sheet sharing (must be "Anyone with link → Viewer")`);
-    }
-    const text = await res.text();
-    MASTER = parseCSV(text);
-    if (MASTER.length === 0) {
-      throw new Error("CSV is empty – Add headers 'brand,model,vin' and data rows to Sheet1");
-    }
-    spinner.style.display = "none";
+    if (!res.ok) throw new Error("Failed to connect to database");
+
+    const data = await res.json();
+    MASTER = data.map(row => ({
+      brand: (row.brand || "").trim(),
+      model: (row.model || "").trim(),
+      vin: (row.vin || "").trim()
+    })).filter(r => r.vin);
+
     status.style.display = "none";
     table.style.display = "table";
     renderTable(MASTER);
     document.querySelector(".subtitle").innerHTML += ` • <strong>${MASTER.length.toLocaleString()} vehicles</strong> loaded`;
+
   } catch (err) {
-    spinner.style.display = "none";
-    statusText.textContent = err.message;
-    status.classList.add("error");
-    console.error("Load error:", err);  // For browser console debugging
+    status.innerHTML = `<div style="color:#ef4444">Error loading data<br>Please refresh the page</div>`;
+    console.error(err);
   }
 }
 
